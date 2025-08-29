@@ -9,7 +9,6 @@ load_dotenv()
 DISCORD_TOKEN = os.getenv("DISCORD_TOKEN")
 ODDS_API_KEY = os.getenv("ODDS_API_KEY")
 
-# Intents (slash commands + components don't need message content, but it's fine if enabled)
 intents = discord.Intents.default()
 bot = commands.Bot(command_prefix="!", intents=intents)
 
@@ -58,8 +57,8 @@ class LeagueDropdown(ui.Select):
         )
 
     async def callback(self, interaction: discord.Interaction):
-        # Acknowledge quickly to avoid timeouts
-        await interaction.response.defer(thinking=True, ephemeral=True)
+        # public message
+        await interaction.response.defer(thinking=True, ephemeral=False)
 
         league_code = self.values[0]
         params = {
@@ -77,18 +76,18 @@ class LeagueDropdown(ui.Select):
             resp.raise_for_status()
             games = resp.json()
         except Exception as e:
-            await interaction.followup.send(f"❌ API error: {e}", ephemeral=True)
+            await interaction.followup.send(f"❌ API error: {e}", ephemeral=False)
             return
 
         if not games:
-            await interaction.followup.send("❌ No games found today for that league.", ephemeral=True)
+            await interaction.followup.send("❌ No games found today for that league.", ephemeral=False)
             return
 
-        # Build Game dropdown (Discord hard limit: 25 options)
+        # Build Game dropdown (Discord limit: 25)
         view = ui.View(timeout=120)
         view.add_item(GameDropdown(games))
         note = " (showing first 25)" if len(games) > 25 else ""
-        await interaction.followup.send(f"Select a game{note}:", view=view, ephemeral=True)
+        await interaction.followup.send(f"Select a game{note}:", view=view, ephemeral=False)
 
 class GameDropdown(ui.Select):
     def __init__(self, games):
@@ -108,12 +107,12 @@ class GameDropdown(ui.Select):
         game_id = self.values[0]
         game = next((g for g in self.games if g["id"] == game_id), None)
         if not game:
-            await interaction.response.send_message("❌ Game not found.", ephemeral=True)
+            await interaction.response.send_message("❌ Game not found.", ephemeral=False)
             return
 
         view = ui.View(timeout=120)
         view.add_item(MarketDropdown(game))
-        await interaction.response.send_message("Select a market:", view=view, ephemeral=True)
+        await interaction.response.send_message("Select a market:", view=view, ephemeral=False)
 
 class MarketDropdown(ui.Select):
     def __init__(self, game):
@@ -150,7 +149,7 @@ class MarketDropdown(ui.Select):
                 })
 
         if not lines:
-            await interaction.response.send_message("❌ No odds found for that market.", ephemeral=True)
+            await interaction.response.send_message("❌ No odds found for that market.", ephemeral=False)
             return
 
         away = self.game.get("away_team", "Away")
@@ -159,7 +158,6 @@ class MarketDropdown(ui.Select):
 
         # Format by market
         if mkey == "h2h":
-            # Group by team and sort by decimal price (monotonic with American)
             by_team = {}
             for e in lines:
                 by_team.setdefault(e["name"], []).append(e)
@@ -174,7 +172,6 @@ class MarketDropdown(ui.Select):
             text = "\n".join(msg)
 
         elif mkey == "spreads":
-            # Show per team: book, point, price; sort by price
             by_team = {}
             for e in lines:
                 by_team.setdefault(e["name"], []).append(e)
@@ -210,22 +207,32 @@ class MarketDropdown(ui.Select):
                 msg.append("\n".join(section))
             text = "\n".join(msg)
 
-        await interaction.response.send_message(text, ephemeral=True)
+        await interaction.response.send_message(text, ephemeral=False)
 
 # ---------- Slash Command ----------
 @bot.tree.command(name="odds", description="League → Game → Market dropdowns (American odds)")
 async def odds_cmd(interaction: discord.Interaction):
     view = ui.View(timeout=120)
     view.add_item(LeagueDropdown())
-    await interaction.response.send_message("Select a league:", view=view, ephemeral=True)
+    await interaction.response.send_message("Select a league:", view=view, ephemeral=False)
 
+# ---------- Auto-sync to every guild the bot is in ----------
 @bot.event
 async def on_ready():
+    print(f"✅ Logged in as {bot.user}")
+    # Try global sync (may take time to propagate, but harmless)
     try:
-        synced = await bot.tree.sync()
-        print(f"✅ Logged in as {bot.user} | Synced {len(synced)} command(s)")
+        await bot.tree.sync()
+        print("🌍 Global commands synced.")
     except Exception as e:
-        print(f"Sync error: {e}")
+        print(f"Global sync error: {e}")
+    # Instant sync in each guild where the bot is already a member
+    for g in bot.guilds:
+        try:
+            synced = await bot.tree.sync(guild=discord.Object(id=g.id))
+            print(f"🔁 Synced {len(synced)} command(s) in {g.name} ({g.id})")
+        except Exception as e:
+            print(f"Guild sync error for {g.id}: {e}")
 
 bot.run(DISCORD_TOKEN)
 
