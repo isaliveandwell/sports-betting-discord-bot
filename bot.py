@@ -58,7 +58,7 @@ class LeagueDropdown(ui.Select):
 
     async def callback(self, interaction: discord.Interaction):
         # public message
-        await interaction.response.defer(thinking=True, ephemeral=False)
+        await interaction.response.defer(thinking=True, ephemeral=True)
 
         league_code = self.values[0]
         params = {
@@ -76,18 +76,18 @@ class LeagueDropdown(ui.Select):
             resp.raise_for_status()
             games = resp.json()
         except Exception as e:
-            await interaction.followup.send(f"❌ API error: {e}", ephemeral=False)
+            await interaction.followup.send(f"❌ API error: {e}", ephemeral=True)
             return
 
         if not games:
-            await interaction.followup.send("❌ No games found today for that league.", ephemeral=False)
+            await interaction.followup.send("❌ No games found today for that league.", ephemeral=True)
             return
 
         # Build Game dropdown (Discord limit: 25)
         view = ui.View(timeout=120)
         view.add_item(GameDropdown(games))
         note = " (showing first 25)" if len(games) > 25 else ""
-        await interaction.followup.send(f"Select a game{note}:", view=view, ephemeral=False)
+        await interaction.followup.send(f"Select a game{note}:", view=view, ephemeral=True)
 
 class GameDropdown(ui.Select):
     def __init__(self, games):
@@ -107,12 +107,12 @@ class GameDropdown(ui.Select):
         game_id = self.values[0]
         game = next((g for g in self.games if g["id"] == game_id), None)
         if not game:
-            await interaction.response.send_message("❌ Game not found.", ephemeral=False)
+            await interaction.response.send_message("❌ Game not found.", ephemeral=True)
             return
 
         view = ui.View(timeout=120)
         view.add_item(MarketDropdown(game))
-        await interaction.response.send_message("Select a market:", view=view, ephemeral=False)
+        await interaction.response.send_message("Select a market:", view=view, ephemeral=True)
 
 class MarketDropdown(ui.Select):
     def __init__(self, game):
@@ -149,7 +149,7 @@ class MarketDropdown(ui.Select):
                 })
 
         if not lines:
-            await interaction.response.send_message("❌ No odds found for that market.", ephemeral=False)
+            await interaction.response.send_message("❌ No odds found for that market.", ephemeral=True)
             return
 
         away = self.game.get("away_team", "Away")
@@ -207,14 +207,14 @@ class MarketDropdown(ui.Select):
                 msg.append("\n".join(section))
             text = "\n".join(msg)
 
-        await interaction.response.send_message(text, ephemeral=False)
+        await interaction.response.send_message(text, ephemeral=True)
 
 # ---------- Slash Command ----------
 @bot.tree.command(name="odds", description="League → Game → Market dropdowns (American odds)")
 async def odds_cmd(interaction: discord.Interaction):
     view = ui.View(timeout=120)
     view.add_item(LeagueDropdown())
-    await interaction.response.send_message("Select a league:", view=view, ephemeral=False)
+    await interaction.response.send_message("Select a league:", view=view, ephemeral=True)
 
 # ---------- Auto-sync to every guild the bot is in ----------
 @bot.event
